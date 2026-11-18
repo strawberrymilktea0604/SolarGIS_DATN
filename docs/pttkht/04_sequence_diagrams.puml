@@ -1,0 +1,82 @@
+@startuml SolarGIS_Sequence_Diagram
+!theme plain
+autonumber "<b>[00]</b>"
+skinparam shadowing false
+skinparam roundcorner 6
+skinparam DefaultFontName "Segoe UI"
+skinparam DefaultFontSize 11
+skinparam sequenceMessageAlign center
+
+title <b>SƠ ĐỒ TUẦN TỰ (SEQUENCE DIAGRAM) — LUỒNG BẤT ĐỒNG BỘ ĐA LUỒNG, CHUYỂN ĐỔI LỊCH SỬ KHÔNG BÓNG MA & XUẤT PDF TYPST</b>
+
+actor "Kỹ sư UAV / O&M" as User
+participant "React / Next.js +\nMapLibre GL JS (60 FPS)" as Web #EFF6FF
+participant "Rust Axum Backend\n(Tokio + SQLx + Typst)" as Axum #FFFBEB
+participant "Redis 7 Broker\n(Queue & Pub/Sub)" as Redis #FEF2F2
+participant "Python AI Worker\n(DJI SDK + YOLO-OBB + Spatial)" as Worker #F0FDF4
+database "PostGIS 16-3.4\n(7 Bảng + Trigger + ST_AsMVT)" as DB #F8FAFC
+
+== Giai đoạn 1: Khởi tải Bản đồ Số WebGL 60 FPS (Vector Tiles Động ST_AsMVT) ==
+User -> Web : Mở Bản đồ Trang trại (VD: Thuận Nam 19 - plant_id=1)
+Web -> Axum : GET /api/tiles/1/{z}/{x}/{y}.mvt
+Axum -> DB : SELECT get_solar_modules_mvt(z, x, y, 1)\n[ST_AsMVT(..., 'mvt_id') + margin 64/4096]
+DB --> Axum : Binary MVT (< 30 KB, Feature ID = mvt_id nguyên dương)
+Axum --> Web : 200 OK (application/vnd.mapbox-vector-tile)
+Web -> Web : Render 36.544 tấm pin ở 60 FPS chồng khít nền PMTiles WebP
+
+== Giai đoạn 2: Tạo Chiến dịch Bay, Đẩy Hàng đợi Redis & Chẩn đoán AI Đa luồng ==
+User -> Web : Tạo đợt bay (G_POA, độ ẩm, phản xạ, e=0.85) & Upload cặp ảnh _W.JPG, _T.JPG
+Web -> Axum : POST /api/campaigns/{id}/upload (Multipart Stream)
+Axum -> Axum : Kiểm tra G_POA >= 600 W/m² & Bóc tách bất đồng bộ EXIF/XMP\n(DewarpFlag, RTK, strip_id, strip_sequence_idx)
+Axum -> DB : INSERT INTO flight_campaigns & raw_image_pairs
+Axum -> Redis : RPUSH queue:solargis:strip_inspection_jobs (JSON Payload)
+Axum --> Web : 202 Accepted (Sẵn sàng nhận luồng sự kiện SSE)
+
+Redis -> Worker : BLPOP queue:solargis:strip_inspection_jobs
+activate Worker
+Worker -> Worker : 1. Giải mã _T.JPG qua DJI Thermal SDK (e=0.85, d<=25m)\n2. Khử méo DewarpData (cv2.undistortPoints P=K) & Chạy AI 2A + AI 2B\n3. Bidirectional Strip Anchoring (4-DoF/6-DoF) + 8-DoF DLT Homography (Hartley)\n4. Ghép cặp Hungarian Hai Ngưỡng & Khử trùng lặp Đa góc nhìn (chọn ảnh Nadir nhất)
+Worker -> DB : INSERT INTO module_inspection_logs ...\nON CONFLICT (campaign_id, module_id, fault_class) DO UPDATE
+activate DB
+note right of DB
+  <b>Trigger trg_sync_module_health_after_inspection:</b>
+  Kiểm tra nếu <i>v_camp_date == MAX(flight_date)</i>
+  -> Cập nhật <i>solar_modules.current_coa_class</i> (2 hoặc 3)
+end note
+DB --> Worker : Trả về mvt_id & trạng thái đã đồng bộ
+deactivate DB
+Worker -> Redis : PUBLISH pubsub:solargis:campaign_events (mvt_id, iec_coa_class, fault_class)
+deactivate Worker
+
+Redis --> Axum : Nhận message từ pubsub:solargis:campaign_events
+Axum --> Web : SSE Event: { mvt_id, iec_coa_class, fault_class }
+Web -> Web : map.setFeatureState({ id: mvt_id }, { coa_class })\n(Đổi màu tấm pin sang Vàng/Đỏ tức thì < 100 ms)
+
+== Giai đoạn 3: Chuyển đổi Xem Đợt bay Lịch sử (Triệt tiêu Bug "Bóng ma Trạng thái") ==
+User -> Web : Chọn xem một Đợt bay Cũ trong lịch sử (campaign_id)
+Web -> Web : 1. map.removeFeatureState({ source: 'solar_modules', sourceLayer: 'solar_modules_layer' })
+Web -> Axum : GET /api/campaigns/{campaign_id}/fault_states
+Axum -> DB : SELECT m.mvt_id, l.fault_class, l.iec_coa_class, l.om_priority, l.qc_status\nFROM module_inspection_logs l JOIN solar_modules m USING (module_id)\nWHERE l.campaign_id = $1 AND l.qc_status <> 'QC_REJECTED'
+DB --> Axum : Danh sách lỗi của đợt bay lịch sử
+Axum --> Web : 200 OK (~20 KB JSON: { is_latest: false, faults: [...] })
+Web -> Web : 2. Lặp qua faults[] gọi map.setFeatureState({ id: item.mvt_id }, ...)\n3. Đổi Paint sang ["coalesce", ["feature-state", "coa_class"], 1]\n4. Lọc theo mảng ID: map.setFilter(..., ["in", ["id"], ["literal", matchedMvtIds]])
+
+== Giai đoạn 4: Hậu kiểm QC & Xuất Biên bản Bảo trì PDF bằng Typst ==
+User -> Web : Duyệt ca biên PENDING_QC (Đổi sang corrected_module_id hoặc QC_REJECTED)
+Web -> Axum : PATCH /api/inspections/{log_id}/qc
+Axum -> DB : UPDATE module_inspection_logs SET module_id = $1, qc_status = $2
+note right of DB
+  Trigger tính lại sức khỏe cho cả
+  <b>OLD.module_id</b> (trả về CoA 1 nếu hết lỗi)
+  và <b>NEW.module_id</b>
+end note
+DB --> Axum : affected_modules: [{ old_mvt_id, new_mvt_id, current_coa_class }]
+Axum --> Web : 200 OK (affected_modules)
+Web -> Web : Cập nhật setFeatureState cho cả tấm cũ và tấm mới
+
+User -> Web : Bấm "Xuất Biên bản Bảo trì PDF Chuẩn IEC TS 62446-3"
+Web -> Axum : POST /api/campaigns/{campaign_id}/report.pdf
+Axum -> DB : Truy vấn thông số môi trường & danh sách tấm pin lỗi CoA 2 / CoA 3
+DB --> Axum : Dữ liệu báo cáo
+Axum -> Axum : tokio::task::spawn_blocking(move || render_typst_pdf(...))\n[Không làm nghẽn luồng async phục vụ Vector Tiles]
+Axum --> Web : 200 OK (application/pdf - < 150 ms)
+@enduml

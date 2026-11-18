@@ -1,0 +1,78 @@
+version: "3.9"
+
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: solargis_postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-solargis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-solargis_secret_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-solargis_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgis_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-solargis} -d ${POSTGRES_DB:-solargis_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: solargis_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.backend
+    container_name: solargis_backend
+    restart: unless-stopped
+    depends_on:
+      postgis:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-solargis}:${POSTGRES_PASSWORD:-solargis_secret_2026}@postgis:5432/${POSTGRES_DB:-solargis_db}
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: info,solar_backend=debug
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../data:/app/data:ro
+
+  worker:
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.worker
+    container_name: solargis_ai_worker
+    restart: unless-stopped
+    depends_on:
+      postgis:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-solargis}:${POSTGRES_PASSWORD:-solargis_secret_2026}@postgis:5432/${POSTGRES_DB:-solargis_db}
+      REDIS_URL: redis://redis:6379
+      LD_LIBRARY_PATH: /opt/dji_tsdk
+    volumes:
+      - ../data:/app/data
+
+volumes:
+  postgis_data:
+  redis_data:

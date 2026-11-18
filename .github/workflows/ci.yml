@@ -1,0 +1,37 @@
+name: SolarGIS CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  check-rust-module3:
+    name: Module 3 Rust Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: modules/module3_digital_twin_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "modules/module3_digital_twin_app -> target"
+      - name: Cargo Check Workspace
+        run: cargo check --workspace
+
+  test-python-packages:
+    name: Shared Spatial Grid Index Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          pip install -e ./packages/spatial_grid_index[dev]
+      - name: Run pytest
+        run: pytest packages/spatial_grid_index/tests

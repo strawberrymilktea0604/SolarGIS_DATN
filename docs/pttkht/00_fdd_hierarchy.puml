@@ -1,0 +1,73 @@
+@startwbs SolarGIS_FDD_Hierarchy
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 6
+skinparam DefaultFontName "Segoe UI"
+skinparam DefaultFontSize 11
+
+<style>
+wbsDiagram {
+  LineColor #334155
+  BackgroundColor #F8FAFC
+  BorderColor #475569
+  root {
+    BackgroundColor #DBEAFE
+    BorderColor #1D4ED8
+    FontStyle bold
+    FontSize 13
+  }
+  :depth(1) {
+    BackgroundColor #FEF3C7
+    BorderColor #D97706
+    FontStyle bold
+  }
+  :depth(2) {
+    BackgroundColor #F0FDF4
+    BorderColor #15803D
+  }
+}
+</style>
+
+* <b>HỆ THỐNG BẢN SAO SỐ (DIGITAL TWIN) & AI ĐA LUỒNG\nGIÁM SÁT NHÀ MÁY ĐIỆN MẶT TRỜI (SOLARGIS)</b>
+
+** <b>1. Phân hệ Khởi tạo Bản sao số &\nKhôi phục Lưới Ortho (Module 1)</b>
+*** 1.1. Quản lý Danh mục 4 Trang trại (UC01)
+**** Khai báo thông số trang trại (TN19, BIM2, TNDL, TT12)
+**** Nạp lưới chuẩn QGIS (.gpkg) về hệ tọa độ EPSG:32649
+**** Cấp phát khóa nguyên mvt_id & Chỉ mục không gian R-Tree GIST
+**** Tích hợp bản đồ nền trực giao PMTiles / XYZ WebP (zoom 15-21)
+*** 1.2. Khôi phục Vùng Pin Méo Đường Ghép (UC02)
+**** Nội suy hệ trục nội tại PCA (u, v) khóa hướng từng hàng Row_ID
+**** Phát hiện lỗ khuyết bước nhảy dọc hàng (1.13m) & vuông góc (2.27m)
+**** Quét suy luận mô hình AI 1 (Ortho-OBB) bắt tấm pin vùng méo
+**** Nắn lưới tô-pô (Topological Snapping) & Gán cờ is_distorted_recovered
+
+** <b>2. Phân hệ Chiến dịch Bay UAV &\nChẩn đoán AI Đa luồng (Module 2)</b>
+*** 2.1. Quản lý Chiến dịch Bay & Tiền xử lý (UC03)
+**** Nhập 4 tham số môi trường chuẩn IEC TS 62446-3 (G_POA, độ ẩm, phản xạ, e=0.85)
+**** Cảnh báo tự động nếu bức xạ mặt phẳng giàn pin G_POA < 600 W/m²
+**** Upload đa luồng cặp ảnh lẻ RGB (_W.JPG) & Nhiệt 16-bit (_T.JPG)
+**** Bóc tách EXIF/XMP (DewarpFlag, RTK, Gimbal, strip_id, strip_sequence_idx)
+*** 2.2. Chẩn đoán Lỗi Nhiệt & Định vị module_id (UC04)
+**** Giải mã bức xạ nhiệt DJI Thermal SDK (dirp) với 4 tham số vật lý (d <= 25.0m)
+**** Khử méo ống kính DewarpData (cv2.undistortPoints với P=K) & Ghép cặp RGB-Nhiệt
+**** Suy luận AI 2A (Tấm pin RGB) & AI 2B (4 lớp lỗi nhiệt CoA 2 / CoA 3)
+**** Nội suy song phương 2 đầu dải bay (Bidirectional Strip Anchoring 4-DoF/6-DoF)
+**** Giải 8-DoF DLT Homography (Hartley) & Làm mịn mạng lò xo Mass-Spring
+**** Ghép cặp tối ưu Hungarian Hai Ngưỡng & Khử trùng lặp đa góc nhìn (Nadir nhất)
+
+** <b>3. Phân hệ Quản trị Bản sao số 60 FPS,\nKiểm duyệt QC & Xuất Báo cáo (Module 3)</b>
+*** 3.1. Hậu kiểm QC & Đồng bộ Sức khỏe Tấm pin (UC05)
+**** Sàng lọc tự động các ca vùng biên (PENDING_QC khi Margin < 0.15)
+**** Xác nhận (HUMAN_CONFIRMED), Bác bỏ (QC_REJECTED) hoặc Đổi mã module_id
+**** Trigger PostGIS đồng bộ ngược an toàn thời gian (v_camp_date = MAX(flight_date))
+*** 3.2. Tương tác Bản đồ WebGL 60 FPS & Lịch sử (UC06)
+**** Phát luồng Vector Tiles động ST_AsMVT (< 30 KB/tile, khóa nguyên mvt_id)
+**** Chuyển đổi đợt bay lịch sử sạch 100% (removeFeatureState + JSON Delta ~20 KB)
+**** Bộ lọc thông minh theo mảng khóa nguyên mvt_id (khắc phục MapLibre Issue #6213)
+**** Cập nhật màu sắc thời gian thực qua Redis Pub/Sub -> SSE
+*** 3.3. Kết xuất Biên bản Bảo trì Chuẩn In ấn (UC07)
+**** Tổng hợp thống kê lỗi CoA 2 / CoA 3, độ ưu tiên O&M & thông số môi trường
+**** Biên dịch PDF tốc độ cao bằng Typst bên trong tokio::task::spawn_blocking (< 150 ms)
+
+@endwbs

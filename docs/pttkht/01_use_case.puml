@@ -1,0 +1,75 @@
+@startuml SolarGIS_UseCase_Diagram
+!theme plain
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam DefaultFontName "Segoe UI"
+skinparam DefaultFontSize 12
+
+skinparam usecase {
+    BackgroundColor #F8FAFC
+    BorderColor #334155
+    ArrowColor #475569
+    FontSize 12
+}
+
+skinparam actor {
+    BackgroundColor #EFF6FF
+    BorderColor #1D4ED8
+}
+
+actor "Quản trị viên Hệ thống\n(System Admin)" as Admin
+actor "Kỹ sư UAV / AI\n(UAV / AI Engineer)" as Engineer
+actor "Kỹ sư Vận hành & Bảo trì\n(O&M Technician)" as OM
+
+rectangle "Hệ thống Bản sao số (Digital Twin) & AI Đa luồng Giám sát Nhà máy Điện mặt trời (SolarGIS)" {
+
+    package "Phân hệ 1: Khởi tạo Bản sao số & Khôi phục Lưới Ortho (Module 1)" #F1F5F9 {
+        usecase "<b>UC01</b>: Khởi tạo Trang trại &\nNạp Lưới Chuẩn .gpkg / PMTiles" as UC01
+        usecase "<b>UC02</b>: Chạy Pipeline AI 1 (Ortho-OBB)\nKhôi phục Vùng Pin Méo Đường Ghép" as UC02
+        usecase "Nội suy PCA Khóa Hướng Từng Hàng\n& Nắn Lưới Tô-pô (Topological Snapping)" as UC02_Sub
+    }
+
+    package "Phân hệ 2: Chiến dịch Bay UAV & Chẩn đoán AI Đa luồng (Module 2)" #FEFCE8 {
+        usecase "<b>UC03</b>: Tạo Chiến dịch Bay (IEC 62446-3)\n& Tải lên Cặp Ảnh Lẻ RGB / Nhiệt" as UC03
+        usecase "Kiểm tra Ngưỡng Bức xạ G_POA >= 600 W/m²\n& Trích xuất EXIF / DewarpFlag / Strip" as UC03_Sub
+        usecase "<b>UC04</b>: Chạy Pipeline AI 2 Bắt Lỗi Nhiệt,\nÁnh xạ module_id & Khử Trùng lặp Đa Góc nhìn" as UC04
+        usecase "Giải mã DJI Thermal SDK (4 tham số, e=0.85),\nBidirectional Strip Homography & Hungarian" as UC04_Sub
+    }
+
+    package "Phân hệ 3: Quản trị Bản sao số 60 FPS, Kiểm duyệt QC & Báo cáo (Module 3)" #F0FDF4 {
+        usecase "<b>UC05</b>: Kiểm duyệt Hậu kiểm QC\nCác Ca Biên (PENDING_QC)" as UC05
+        usecase "Đồng bộ An toàn Thời gian MAX(flight_date)\nqua Trigger PostGIS (INSERT/UPDATE/DELETE)" as UC05_Sync
+        usecase "<b>UC06</b>: Tương tác Bản đồ WebGL 60 FPS\n& Chuyển đổi Đợt bay Lịch sử (JSON Delta)" as UC06
+        usecase "Xóa Bóng ma Trạng thái (removeFeatureState)\n& Lọc theo Mảng Khóa Nguyên mvt_id" as UC06_Sub
+        usecase "<b>UC07</b>: Kết xuất Biên bản Bảo trì PDF\nChuẩn IEC TS 62446-3 bằng Typst" as UC07
+    }
+}
+
+' Liên kết Tác nhân -> Use Cases
+Admin --> UC01
+Admin --> UC02
+Admin --> UC06
+
+Engineer --> UC02
+Engineer --> UC03
+Engineer --> UC04
+Engineer --> UC05
+Engineer --> UC06
+
+OM --> UC05
+OM --> UC06
+OM --> UC07
+
+' Quan hệ <<include>> và <<extend>>
+UC02 ..> UC02_Sub : <<include>>
+UC03 ..> UC03_Sub : <<include>>
+UC04 ..> UC04_Sub : <<include>>
+UC04 ..> UC05_Sync : <<include>>
+UC05 ..> UC05_Sync : <<include>>
+UC06 ..> UC06_Sub : <<include>>
+UC07 .up.> UC06 : <<extend>>
+
+@enduml
