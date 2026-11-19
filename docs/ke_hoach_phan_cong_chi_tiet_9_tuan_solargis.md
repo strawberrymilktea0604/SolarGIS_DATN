@@ -49,7 +49,7 @@
 * **2. Dùng những bộ dữ liệu gì:**
   * File `Quy định Tổ chức thực hiện và đánh giá ĐATN của Trường ĐHXDHN.pdf`, `HUCE_QD_DATN_v2_260119.docx`, `2. Đề cương HP-ĐATN-V2.docx`, [thuannam19_master.gpkg](https://drive.google.com/file/d/1ytHofNRDcg9pFgoFGIhPRunAOChdTycN/view?usp=drivesdk) và các file `.gpkg` của 3 nhà máy còn lại.
 * **3. Cách thức làm:**
-  * Thống nhất quy tắc đặt khóa chính `module_id` là `{plant_code}_block{B}_string{S}_{ID_Pin:05d}` (đi kèm khóa số nguyên dương `mvt_id BIGSERIAL UNIQUE` dùng thống nhất cho Vector Tiles `.mvt` và `MapLibre setFeatureState`), hệ tọa độ lưu trữ trong PostGIS là `EPSG:32649` (UTM Zone 49N), hệ tọa độ truyền Vector Tiles lên Web là `EPSG:3857` (Web Mercator), và 4 mã lớp lỗi nhiệt là `0: SingleHotSpot`, `1: MultiHotSpot`, `2: Bypass`, `3: ModuleOpenCircuit`.
+  * Thống nhất quy tắc đặt khóa chính `module_id` là `block{B}_string{S}_{ID_Pin:05d}` (đi kèm khóa số nguyên dương `mvt_id BIGSERIAL UNIQUE` dùng thống nhất cho Vector Tiles `.mvt` và `MapLibre setFeatureState`), hệ tọa độ lưu trữ trong PostGIS là `EPSG:32649` (UTM Zone 49N), hệ tọa độ truyền Vector Tiles lên Web là `EPSG:3857` (Web Mercator), và 4 mã lớp lỗi nhiệt là `0: SingleHotSpot`, `1: MultiHotSpot`, `2: Bypass`, `3: ModuleOpenCircuit`.
 * **4. Khảo sát như thế nào:**
   * Viết 1 script Python đọc trực tiếp header của các file Ortho `.tif`, `.xml` và `.gpkg` của cả 4 nhà máy để xuất ra **Bảng kiểm kê thông số kỹ thuật 4 trang trại Ninh Thuận**: Loại drone/camera (`ZH20T`, `M2EA`, `Zenmuse P1`), độ cao bay kế hoạch vs thực tế, GSD RGB & GSD Nhiệt thực tế (cm/px), mã EPSG gốc và tổng số tấm pin đã vẽ trong mỗi file `.gpkg`.
 
