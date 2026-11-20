@@ -1,5 +1,5 @@
 ﻿plant_code,mean_angle_deg,median_du_m,median_dv_m,zigzag_strings,original_modules,recovered_in_row,recovered_cross_row,rejected_overlap,rejected_raster,total_completed,output_size_mb
 TN19,4.51,1.904,0.96,0,36544,195,0,0,0,36739,15.04
 TNDL,2.5,1.049,2.05,0,50566,269,0,0,78,50835,21.91
-TT12,22.44,1.04,2.05,6,31780,6201,59,1710,723,38040,16.86
+TT12,22.44,1.04,2.05,6,31780,6201,59,1710,723,38040,16.63
 BIM2,-0.63,1.029,1.982,0,21136,315,0,0,0,21451,8.25

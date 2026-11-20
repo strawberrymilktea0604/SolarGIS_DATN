@@ -298,7 +298,7 @@ def process_plant(plant_code: str, gpkg_in: str, gpkg_out: str) -> dict | None:
                                 "layer": block,
                                 "path": base_row["path"],
                                 "String_ID": string_id,
-                                "module_id": f"{prefix}{block.lower()}_{string_id.lower()}_r{rid_int}_rec_{new_pin:05d}",
+                                "module_id": f"{prefix}{block.lower()}_{string_id.lower()}_r{rid_int}_rec_{len(in_row_recovered):05d}",
                                 "is_distorted_recovered": True,
                                 "panel_type": "distorted_seamline",
                             }
@@ -412,6 +412,21 @@ def process_plant(plant_code: str, gpkg_in: str, gpkg_out: str) -> dict | None:
     if out_path.exists():
         out_path.unlink()
 
+        # Chuẩn hóa gọn tên Block trong module_id (bỏ tiền tố thừa 'thientan_master — ' nếu có) & khử trùng 100%
+    out_gdf["module_id"] = (
+        out_gdf["module_id"]
+        .astype(str)
+        .str.replace("thientan_master — ", "", regex=False)
+        .str.replace(" ", "_", regex=False)
+    )
+    dup_mask = out_gdf.duplicated(subset=["module_id"], keep=False)
+    if dup_mask.any():
+        dup_counts = out_gdf.groupby("module_id").cumcount()
+        out_gdf.loc[dup_counts > 0, "module_id"] = (
+            out_gdf.loc[dup_counts > 0, "module_id"] + "_d" + dup_counts[dup_counts > 0].astype(str)
+        )
+    assert out_gdf["module_id"].is_unique, f"{plant_code}: Vẫn còn module_id trùng!"
+    
     out_gdf.to_file(out_path, layer="modules", driver="GPKG")
     if aoi_gdf is not None:
         aoi_gdf.to_file(out_path, layer="aoi_boundary", driver="GPKG")
