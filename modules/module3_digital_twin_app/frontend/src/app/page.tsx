@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
+import { Protocol } from "pmtiles";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
 
@@ -34,7 +35,12 @@ export default function SolarDigitalTwinPortal() {
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // Tọa độ mặc định vùng lưới Thuận Nam 19 (EPSG:32649 -> WGS84 ~ 108.888 E, 11.438 N)
+    // Đăng ký giao thức pmtiles:// cho MapLibre GL JS để đọc trực tiếp file tn19_ortho.pmtiles
+    const protocol = new Protocol();
+    maplibregl.addProtocol("pmtiles", protocol.tile);
+
+    // Tọa độ chính xác trích xuất từ Hilbert TileID của tn19_ortho.pmtiles:
+    // z=15, x=26291..26292, y=15337 -> Lon: 108.852002 E, Lat: 11.423508 N (Thuận Nam 19, Ninh Thuận)
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: {
@@ -45,6 +51,11 @@ export default function SolarDigitalTwinPortal() {
             tiles: ["https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png"],
             tileSize: 256,
             attribution: "&copy; OpenStreetMap &copy; CARTO",
+          },
+          "tn19-ortho-pmtiles": {
+            type: "raster",
+            url: "pmtiles:///tiles/tn19_ortho.pmtiles",
+            tileSize: 256,
           },
           solar_modules: {
             type: "vector",
@@ -58,6 +69,13 @@ export default function SolarDigitalTwinPortal() {
             id: "background-map",
             type: "raster",
             source: "osm-dark",
+          },
+          {
+            id: "tn19-ortho-layer",
+            type: "raster",
+            source: "tn19-ortho-pmtiles",
+            minzoom: 14,
+            maxzoom: 22,
           },
           {
             id: "solar-modules-fill",
@@ -76,7 +94,7 @@ export default function SolarDigitalTwinPortal() {
                 "#f59e0b", // CoA 2 - Vàng cam (Thermal abnormality)
                 "#22c55e", // CoA 1 - Xanh lá (Normal)
               ],
-              "fill-opacity": 0.78,
+              "fill-opacity": 0.45,
             },
           },
           {
@@ -91,8 +109,8 @@ export default function SolarDigitalTwinPortal() {
           },
         ],
       },
-      center: [108.893, 11.439],
-      zoom: 17.2,
+      center: [108.852002, 11.423508],
+      zoom: 16.5,
       maxZoom: 22,
     });
 

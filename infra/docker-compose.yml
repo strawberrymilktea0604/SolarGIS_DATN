@@ -5,9 +5,11 @@ services:
     image: postgis/postgis:16-3.4
     container_name: solargis_postgis
     restart: unless-stopped
+    env_file:
+      - ../.env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-solargis}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-solargis_secret_2026}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Vui long khai bao POSTGRES_PASSWORD trong file .env}
       POSTGRES_DB: ${POSTGRES_DB:-solargis_db}
     ports:
       - "5432:5432"
@@ -45,8 +47,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    env_file:
+      - ../.env
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-solargis}:${POSTGRES_PASSWORD:-solargis_secret_2026}@postgis:5432/${POSTGRES_DB:-solargis_db}
+      DATABASE_URL: postgres://${POSTGRES_USER:-solargis}:${POSTGRES_PASSWORD}@postgis:5432/${POSTGRES_DB:-solargis_db}
       REDIS_URL: redis://redis:6379
       RUST_LOG: info,solar_backend=debug
     ports:
@@ -66,8 +70,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    env_file:
+      - ../.env
     environment:
-      DATABASE_URL: postgres://${POSTGRES_USER:-solargis}:${POSTGRES_PASSWORD:-solargis_secret_2026}@postgis:5432/${POSTGRES_DB:-solargis_db}
+      DATABASE_URL: postgres://${POSTGRES_USER:-solargis}:${POSTGRES_PASSWORD}@postgis:5432/${POSTGRES_DB:-solargis_db}
       REDIS_URL: redis://redis:6379
       LD_LIBRARY_PATH: /opt/dji_tsdk
     volumes:

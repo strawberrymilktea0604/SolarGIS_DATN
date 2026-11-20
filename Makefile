@@ -12,13 +12,13 @@ help:
 	@echo "  make tiles-tn19    - Build XYZ WebP & PMTiles for Thuan Nam 19"
 
 up:
-	docker compose -f infra/docker-compose.yml up -d
+	docker compose --env-file .env -f infra/docker-compose.yml up -d
 
 down:
-	docker compose -f infra/docker-compose.yml down
+	docker compose --env-file .env -f infra/docker-compose.yml down
 
 logs:
-	docker compose -f infra/docker-compose.yml logs -f
+	docker compose --env-file .env -f infra/docker-compose.yml logs -f
 
 psql:
 	docker exec -it solargis_postgis psql -U solargis -d solargis_db

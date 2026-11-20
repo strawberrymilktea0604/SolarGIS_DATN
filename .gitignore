@@ -43,6 +43,7 @@ data/gpkg/*.gpkg
 !data/gpkg/.gitkeep
 data/artifacts/*
 !data/artifacts/.gitkeep
+modules/module3_digital_twin_app/frontend/public/tiles/*.pmtiles
 
 # DJI Thermal SDK shared libraries (if binary heavy)
 infra/dji_tsdk/*.so

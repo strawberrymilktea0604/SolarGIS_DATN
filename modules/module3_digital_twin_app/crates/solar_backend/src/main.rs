@@ -30,12 +30,41 @@ pub struct PlantItem {
     pub pmtiles_url: String,
 }
 
+/// Tự động nạp các biến môi trường từ file `.env` (ở thư mục hiện tại hoặc thư mục gốc repo)
+fn load_dotenv_file() {
+    for candidate in &[".env", "../../.env", "../../../.env"] {
+        if let Ok(content) = std::fs::read_to_string(candidate) {
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() || trimmed.starts_with('#') {
+                    continue;
+                }
+                if let Some((k, v)) = trimmed.split_once('=') {
+                    let key = k.trim();
+                    let val = v.trim().trim_matches('"').trim_matches('\'');
+                    if std::env::var_os(key).is_none() {
+                        std::env::set_var(key, val);
+                    }
+                }
+            }
+            break;
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    load_dotenv_file();
     tracing_subscriber::fmt::init();
 
-    let db_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://solargis:solargis_secret_2026@localhost:5432/solargis_db".to_string());
+    let db_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+        let user = std::env::var("POSTGRES_USER").unwrap_or_else(|_| "solargis".to_string());
+        let pass = std::env::var("POSTGRES_PASSWORD").unwrap_or_default();
+        let host = std::env::var("POSTGRES_HOST").unwrap_or_else(|_| "localhost".to_string());
+        let port = std::env::var("POSTGRES_PORT").unwrap_or_else(|_| "5432".to_string());
+        let db = std::env::var("POSTGRES_DB").unwrap_or_else(|_| "solargis_db".to_string());
+        format!("postgres://{}:{}@{}:{}/{}", user, pass, host, port, db)
+    });
     let redis_url = std::env::var("REDIS_URL")
         .unwrap_or_else(|_| "redis://localhost:6379".to_string());
 
@@ -60,8 +89,17 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("SolarGIS Rust Axum Backend listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    tracing::info!("SolarGIS Rust Axum Backend stopped cleanly.");
     Ok(())
+}
+
+async fn shutdown_signal() {
+    let _ = tokio::signal::ctrl_c().await;
+    tracing::info!("Ctrl+C received, shutting down gracefully...");
 }
 
 async fn health_check(State(state): State<AppState>) -> impl IntoResponse {

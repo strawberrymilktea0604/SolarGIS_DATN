@@ -11,7 +11,7 @@
 INSERT INTO solar_plants (plant_code, plant_name, capacity_mwp, crs_epsg, pmtiles_url, raster_tile_url_template, boundary_geom)
 VALUES
     ('TN19', 'Nhà máy Điện mặt trời Thuận Nam 19', 49.0, 32649, '/tiles/tn19_ortho.pmtiles', '/tiles/tn19/{z}/{x}/{y}.webp',
-     ST_GeomFromText('MULTIPOLYGON(((270000 1265000, 271500 1265000, 271500 1266500, 270000 1266500, 270000 1265000)))', 32649)),
+     ST_GeomFromText('MULTIPOLYGON(((265100 1263300, 266300 1263300, 266300 1264200, 265100 1264200, 265100 1263300)))', 32649)),
     ('BIM2', 'Nhà máy Điện mặt trời BIM 2', 250.0, 32649, '/tiles/bim2_ortho.pmtiles', '/tiles/bim2/{z}/{x}/{y}.webp',
      ST_GeomFromText('MULTIPOLYGON(((272000 1265000, 273500 1265000, 273500 1266500, 272000 1266500, 272000 1265000)))', 32649)),
     ('TNDL', 'Nhà máy Điện mặt trời Thuận Nam Đức Long', 50.0, 32649, '/tiles/tndl_ortho.pmtiles', '/tiles/tndl/{z}/{x}/{y}.webp',
@@ -44,12 +44,13 @@ BEGIN
     END IF;
 
     -- Chia thành 6 Block, ~25 String/Block, 4 Row/String, ~62 tấm/Row (~36.544 tấm pin)
+    -- Đặt đúng vào tâm ảnh Ortho thật trong tn19_ortho.pmtiles (Lon 108.852002 E, Lat 11.423508 N -> EPSG:32649 X=265350, Y=1263500)
     FOR v_b IN 1..6 LOOP
         INSERT INTO solar_blocks (plant_id, block_code, geom)
         VALUES (
             v_plant_id,
             'block' || v_b,
-            ST_MakeEnvelope(270100 + (v_b - 1) * 200, 1265100, 270100 + v_b * 200 - 10, 1265900, 32649)::GEOMETRY(MultiPolygon, 32649)
+            ST_MakeEnvelope(265350 + (v_b - 1) * 90, 1263480, 265350 + v_b * 90 - 5, 1263850, 32649)::GEOMETRY(MultiPolygon, 32649)
         )
         ON CONFLICT (plant_id, block_code) DO UPDATE SET block_code = EXCLUDED.block_code
         RETURNING id INTO v_block_id;
@@ -61,10 +62,10 @@ BEGIN
                 'string' || v_s,
                 1.0, 0.0, 4, 248,
                 ST_MakeEnvelope(
-                    270100 + (v_b - 1) * 200,
-                    1265100 + (v_s - 1) * 12,
-                    270100 + (v_b - 1) * 200 + 75,
-                    1265100 + (v_s - 1) * 12 + 9.5,
+                    265350 + (v_b - 1) * 90,
+                    1263480 + (v_s - 1) * 12,
+                    265350 + (v_b - 1) * 90 + 75,
+                    1263480 + (v_s - 1) * 12 + 9.5,
                     32649
                 )
             )
@@ -74,8 +75,8 @@ BEGIN
             FOR v_r IN 1..4 LOOP
                 FOR v_p IN 1..62 LOOP
                     EXIT WHEN v_inserted >= p_target_count;
-                    v_x0 := 270100.0 + (v_b - 1) * 200.0 + (v_p - 1) * 1.13;
-                    v_y0 := 1265100.0 + (v_s - 1) * 12.0 + (v_r - 1) * 2.27;
+                    v_x0 := 265350.0 + (v_b - 1) * 90.0 + (v_p - 1) * 1.13;
+                    v_y0 := 1263480.0 + (v_s - 1) * 12.0 + (v_r - 1) * 2.27;
                     v_poly := ST_MakeEnvelope(v_x0, v_y0, v_x0 + 1.08, v_y0 + 2.15, 32649);
 
                     INSERT INTO solar_modules (

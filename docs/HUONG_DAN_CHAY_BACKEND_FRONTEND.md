@@ -17,12 +17,14 @@ Trên máy Windows hiện tại của bạn đã có sẵn đầy đủ bộ cô
 
 Để quá trình phát triển và gỡ lỗi (debug) thuận tiện nhất, bạn nên bật **PostGIS + Redis bằng Docker**, còn **Rust Backend** và **Next.js Frontend** chạy trực tiếp trên PowerShell để có Hot-Reload nhanh.
 
-### Bước 1: Khởi chạy Cơ sở dữ liệu PostGIS 16-3.4 & Redis 7
+### Bước 1: Kiểm tra file `.env` & Khởi chạy Cơ sở dữ liệu PostGIS 16-3.4 + Redis 7
+Toàn bộ mật khẩu CSDL (`POSTGRES_PASSWORD`) và chuỗi kết nối (`DATABASE_URL`) đã được tách riêng ra file [`.env`](file:///c:/Users/Admin/Documents/Project/SolarGIS_DATN/SolarGIS_DATN/.env) ở thư mục gốc (file này đã nằm trong `.gitignore` nên không bao giờ bị lộ lên Git; khi thành viên khác clone repo về chỉ cần copy từ [`.env.example`](file:///c:/Users/Admin/Documents/Project/SolarGIS_DATN/SolarGIS_DATN/.env.example) sang `.env`).
+
 Mở **PowerShell #1** tại thư mục gốc của dự án (`c:\Users\Admin\Documents\Project\SolarGIS_DATN\SolarGIS_DATN`) và chạy:
 
 ```powershell
-# 1. Khởi chạy riêng 2 container nền tảng là PostGIS và Redis
-docker compose -f infra/docker-compose.yml up -d postgis redis
+# 1. Khởi chạy riêng 2 container nền tảng là PostGIS và Redis (nạp biến từ file .env)
+docker compose --env-file .env -f infra/docker-compose.yml up -d postgis redis
 
 # 2. Kiểm tra trạng thái container (đợi chữ "healthy")
 docker ps
@@ -66,16 +68,12 @@ docker exec -it solargis_postgis psql -U solargis -d solargis_db -c "EXPLAIN (AN
 ---
 
 ### Bước 3: Khởi chạy Backend 100% Rust (`Axum` + `Tokio` + `SQLx`)
-Mở **PowerShell #2**, di chuyển vào thư mục Module 3 và chạy Backend Rust:
+Backend Rust (`solar_backend`) đã được tích hợp sẵn bộ đọc tự động file `.env` ở thư mục gốc (`load_dotenv_file()`), nên bạn **không cần gõ tay mật khẩu trên PowerShell nữa**. Mở **PowerShell #2**, di chuyển vào thư mục Module 3 và chạy:
 
 ```powershell
 cd c:\Users\Admin\Documents\Project\SolarGIS_DATN\SolarGIS_DATN\modules\module3_digital_twin_app
 
-# Thiết lập chuỗi kết nối tới container PostGIS và Redis
-$env:DATABASE_URL="postgres://solargis:solargis_secret_2026@localhost:5432/solargis_db"
-$env:REDIS_URL="redis://localhost:6379"
-
-# Biên dịch và khởi chạy server Rust Axum tại cổng 8080
+# Biên dịch và khởi chạy server Rust Axum tại cổng 8080 (tự động đọc DATABASE_URL từ file .env)
 cargo run --bin solar_backend
 ```
 
