@@ -1,9 +1,11 @@
-# Bỏ qua toàn bộ dữ liệu nặng, chỉ giữ lại .gitkeep và README.md
+# Bỏ qua toàn bộ dữ liệu nặng trong data/, chỉ giữ lại .gitkeep, README.md và bảng thống kê .csv
 data/gpkg/*.gpkg
+!data/gpkg/README.md
 data/raw/*
 !data/raw/.gitkeep
 data/artifacts/*
 !data/artifacts/.gitkeep
+!data/artifacts/audit_pca_summary.csv
 
 # Môi trường ảo & cache Python
 .venv/
