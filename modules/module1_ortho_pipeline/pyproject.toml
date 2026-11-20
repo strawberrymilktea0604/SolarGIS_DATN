@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "module1_ortho_pipeline"
+version = "0.1.0"
+description = "Module 1: Ortho-OBB Pipeline (Seamline Distorted Module Recovery), Row-Wise PCA Grid Interpolation & PMTiles Builder"
+requires-python = ">=3.10"
+dependencies = [
+    "spatial_grid_index",
+    "numpy>=1.24.0",
+    "opencv-python-headless>=4.8.0",
+    "shapely>=2.0.0",
+    "geopandas>=0.14.0",
+]

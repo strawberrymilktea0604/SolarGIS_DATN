@@ -1,0 +1,49 @@
+@startuml SolarGIS_Clean_Architecture
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam componentStyle rectangle
+skinparam DefaultFontName "Segoe UI"
+skinparam DefaultFontSize 11
+
+title <b>SƠ ĐỒ KIẾN TRÚC HỆ THỐNG 4 TẦNG (CLEAN ARCHITECTURE) & ĐÓNG GÓI DOCKER</b>\n(Tách biệt Presentation WebGL 60 FPS - Application Rust Axum - Domain AI & Spatial - Infrastructure PostGIS/Redis)
+
+package "Tầng 1: Presentation Layer (Frontend WebGIS 60 FPS)" #EFF6FF {
+    component "<b>Next.js / React + TypeScript</b>\n- Quản lý Chiến dịch Bay & Inspector Drawer\n- Bảng Duyệt Hậu kiểm QC (PENDING_QC)" as ReactUI
+    component "<b>MapLibre GL JS (WebGL Engine)</b>\n- Render Vector Tiles (.mvt) khóa nguyên <i>mvt_id</i>\n- Chống Ghost State: <i>removeFeatureState</i> + Fallback CoA 1\n- Bộ lọc mảng ID: <i>['in', ['id'], ['literal', faultMvtIds]]</i>" as MapLibre
+    ReactUI <-> MapLibre : Đồng bộ State
+}
+
+package "Tầng 2: Application & API Gateway Layer (100% Rust Workspace)" #FFFBEB {
+    component "<b>Crate: solar_backend (Axum + Tokio)</b>\n- <i>GET /api/tiles/{plant}/{z}/{x}/{y}.mvt</i>\n- <i>GET /api/campaigns/{id}/fault_states</i>\n- <i>PATCH /api/inspections/{id}/qc</i>\n- Luồng SSE Realtime & Upload Multipart bất đồng bộ" as AxumAPI
+    component "<b>Typst PDF Engine (tokio::task::spawn_blocking)</b>\n- Biên dịch mẫu <i>iec_62446_3_report.typ</i> (< 150 ms)\n- Tách biệt hoàn toàn khỏi Tokio Async Event Loop" as TypstEngine
+    component "<b>Crate: solar_shared</b>\n- Enum <i>IecCoaClass (1,2,3)</i>, <i>ThermalFaultClass</i>\n- DTOs & Parser EXIF/XMP" as SharedCrate
+    AxumAPI --> TypstEngine : Gọi trên Blocking Threadpool
+    AxumAPI ..> SharedCrate : Sử dụng chung
+}
+
+package "Tầng 3: Domain AI & Spatial Computing Layer (Python Workers - linux/amd64)" #F0FDF4 {
+    component "<b>Module 1: Ortho Pipeline & Spatial Index (TV1)</b>\n- Nội suy vùng pin méo theo PCA khóa hướng từng hàng\n- AI 1 (Ortho-OBB) + <i>Topological Snapping</i>\n- Thư viện <b>spatial_grid_index</b> (STRtree + cKDTree + Mass-Spring)" as Mod1
+    component "<b>Module 2: Dual-Stream UAV Thermal AI (TV2)</b>\n- Giải mã <b>DJI Thermal SDK (libdirp.so)</b> đủ 4 tham số (e=0.85, d<=25m)\n- Khử méo <i>DewarpData (cv2.undistortPoints P=K)</i>\n- AI 2A (RGB Panel) + AI 2B (4 Lớp Lỗi Nhiệt IEC 62446-3)\n- <i>Bidirectional Strip Anchoring</i> (4-DoF/6-DoF + 8-DoF Hartley DLT)\n- <i>Hungarian Matching</i> Hai Ngưỡng + <i>Multi-View Deduplication</i>" as Mod2
+    Mod2 --> Mod1 : Gọi API <i>spatial_grid_index</i>\n(O(log N) & Boundary Landmarks)
+}
+
+package "Tầng 4: Infrastructure & Persistence Layer (Docker Containers)" #F8FAFC {
+    database "<b>PostgreSQL 16 + PostGIS 3.4 (EPSG:32649)</b>\n- 7 Bảng Cốt lõi + Chỉ mục R-Tree <i>GIST (geom)</i>\n- Hàm nội tại <i>get_solar_modules_mvt (ST_AsMVT)</i>\n- Trigger <i>trg_sync_module_health_after_inspection</i>\n  (Kiểm tra <i>MAX(flight_date)</i> & bắt đủ INSERT/UPDATE/DELETE)" as PostGIS
+    queue "<b>Redis 7 Broker</b>\n- Queue: <i>queue:solargis:strip_inspection_jobs</i>\n- Pub/Sub: <i>pubsub:solargis:campaign_events</i>" as Redis
+    storage "<b>Static Tile Storage</b>\n- Gói <i>.pmtiles</i> & Cây thư mục <i>XYZ WebP</i>\n  (<i>gdal2tiles --xyz --exclude -z 15-21</i>)" as TileStore
+}
+
+' Luồng kết nối giữa các tầng
+MapLibre --> AxumAPI : HTTP/2 MVT Tiles & REST JSON
+AxumAPI --> MapLibre : Server-Sent Events (SSE)
+MapLibre --> TileStore : Tải ảnh nền Ortho WebP / PMTiles
+
+AxumAPI --> PostGIS : SQLx Async Pool (ST_AsMVT & CRUD)
+AxumAPI <--> Redis : Đẩy Job & Lắng nghe Pub/Sub
+
+Redis <--> Mod2 : Redis Consumer / Publisher
+Mod1 --> PostGIS : Nạp lưới chuẩn .gpkg & vùng pin méo
+Mod2 --> PostGIS : Ghi <i>module_inspection_logs</i>\n(Kích hoạt Trigger đồng bộ)
+
+@enduml

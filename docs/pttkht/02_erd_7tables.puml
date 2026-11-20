@@ -1,0 +1,171 @@
+@startuml SolarGIS_ERD_7Tables_PostGIS
+!theme plain
+hide circle
+skinparam linetype ortho
+skinparam shadowing false
+skinparam roundcorner 6
+skinparam DefaultFontName "Segoe UI"
+skinparam DefaultFontSize 11
+
+skinparam class {
+    BackgroundColor #FFFFFF
+    HeaderBackgroundColor #E2E8F0
+    BorderColor #334155
+    ArrowColor #1E293B
+}
+
+title <b>SƠ ĐỒ THỰC THỂ LIÊN KẾT (ERD) 7 BẢNG CỐT LÕI POSTGIS (HỆ QUY CHIẾU UTM EPSG:32649)</b>\nChuẩn hóa Khóa Nguyên <i>mvt_id</i> (ST_AsMVT), Phân hạng <i>CoA 1/2/3</i> (IEC TS 62446-3:2017) & Trigger Đồng bộ An toàn Thời gian
+
+entity "1. solar_plants\n(Nhà máy điện mặt trời)" as solar_plants {
+    * <b>id</b> : SERIAL <<PK>>
+    --
+    * plant_code : VARCHAR(16) <<UNIQUE>>
+      <i>('TN19', 'BIM2', 'TNDL', 'TT12')</i>
+    * plant_name : VARCHAR(128)
+      capacity_mwp : DOUBLE PRECISION
+    * crs_epsg : INT = 32649
+    * pmtiles_url : TEXT
+      raster_tile_url_template : TEXT
+    * boundary_geom : GEOMETRY(MultiPolygon, 32649) <<GIST>>
+    * created_at : TIMESTAMPTZ = NOW()
+}
+
+entity "2. solar_blocks\n(Khu vực / Block Inverter)" as solar_blocks {
+    * <b>id</b> : SERIAL <<PK>>
+    --
+    * plant_id : INT <<FK, UQ1>>
+    * block_code : VARCHAR(32) <<UQ1>>
+    * geom : GEOMETRY(MultiPolygon, 32649) <<GIST>>
+}
+
+entity "3. solar_strings\n(Chuỗi / Bàn pin & Trục Nội tại PCA)" as solar_strings {
+    * <b>id</b> : SERIAL <<PK>>
+    --
+    * block_id : INT <<FK, UQ1>>
+    * string_code : VARCHAR(32) <<UQ1>>
+    * tilt_deg : DOUBLE PRECISION = 12.0
+    * azimuth_deg : DOUBLE PRECISION = 180.0
+      pca_axis_u_x : DOUBLE PRECISION
+      pca_axis_u_y : DOUBLE PRECISION
+    * row_count : SMALLINT = 4
+      expected_modules : INT
+    * geom : GEOMETRY(Polygon, 32649) <<GIST>>
+}
+
+entity "4. solar_modules\n(Định danh Gốc Digital Twin - 36.544+ tấm)" as solar_modules #F0FDF4 {
+    * <b>module_id</b> : VARCHAR(64) <<PK>>
+      <i>(VD: tn19_block1_string4_00458)</i>
+    * <b>mvt_id</b> : BIGSERIAL <<UNIQUE, NOT NULL>>
+      <i>(Top-level Feature ID cho ST_AsMVT & MapLibre)</i>
+    --
+    * plant_id : INT <<FK, IDX>>
+    * block_id : INT <<FK>>
+    * string_id : INT <<FK>>
+    * row_id : SMALLINT <<CHECK 1..6>>
+    * pin_index : INT <<CHECK > 0>>
+    * is_distorted_recovered : BOOLEAN = FALSE
+    * current_health_status : VARCHAR(32) = 'NORMAL'
+    * <b>current_coa_class</b> : SMALLINT = 1 <<CHECK 1,2,3>>
+      <i>(1 = CoA 1 Normal, 2 = CoA 2, 3 = CoA 3)</i>
+    * centroid_geom : GEOMETRY(Point, 32649) <<GIST>>
+    * geom : GEOMETRY(Polygon, 32649) <<GIST>>
+}
+
+entity "5. flight_campaigns\n(Chiến dịch Bay & Thông số Môi trường IEC 62446-3)" as flight_campaigns #FEFCE8 {
+    * <b>id</b> : UUID <<PK>>
+    --
+    * plant_id : INT <<FK>>
+    * campaign_name : VARCHAR(128)
+    * <b>flight_date</b> : TIMESTAMPTZ
+    * uav_camera_model : VARCHAR(32)
+      <i>('DJI_ZH20T', 'DJI_M2EA', 'DJI_P1')</i>
+      planned_altitude_m : DOUBLE PRECISION
+      recorded_altitude_m : DOUBLE PRECISION
+      gsd_rgb_cm : DOUBLE PRECISION
+      gsd_thermal_cm : DOUBLE PRECISION
+    * <b>irradiance_wm2</b> : DOUBLE PRECISION = 850.0
+    * ambient_temp_c : DOUBLE PRECISION = 32.0
+    * wind_speed_ms : DOUBLE PRECISION = 2.5
+    * <b>relative_humidity_pct</b> : DOUBLE PRECISION = 70.0
+    * <b>reflected_temp_c</b> : DOUBLE PRECISION = 5.0
+    * <b>emissivity</b> : DOUBLE PRECISION = 0.85
+    * status : VARCHAR(32) = 'PROCESSING'
+    * created_at : TIMESTAMPTZ = NOW()
+}
+
+entity "6. raw_image_pairs\n(Cặp Ảnh Lẻ RGB _W.JPG & Nhiệt _T.JPG theo Dải bay)" as raw_image_pairs {
+    * <b>id</b> : UUID <<PK>>
+    --
+    * campaign_id : UUID <<FK, IDX>>
+    * <b>strip_id</b> : VARCHAR(64) <<IDX>>
+    * <b>strip_sequence_idx</b> : INT <<IDX>>
+    * rgb_path : TEXT
+      thermal_path : TEXT
+    * recorded_agl_m : DOUBLE PRECISION
+    * gimbal_yaw : DOUBLE PRECISION
+    * gimbal_pitch : DOUBLE PRECISION
+    * rtk_fix_flag : SMALLINT = 50
+    * <b>dewarp_applied_in_camera</b> : BOOLEAN = FALSE
+      dewarp_params : JSONB
+    * camera_center_geom : GEOMETRY(Point, 32649) <<GIST>>
+}
+
+entity "7. module_inspection_logs\n(Kết quả Chẩn đoán Đã Khử Trùng lặp Đa Góc nhìn & QC)" as module_inspection_logs #FEF2F2 {
+    * <b>id</b> : UUID <<PK>>
+    --
+    * campaign_id : UUID <<FK, UQ1>>
+    * module_id : VARCHAR(64) <<FK, UQ1>>
+    * fault_class : VARCHAR(32) <<UQ1>>
+      <i>('SingleHotSpot','MultiHotSpot','Bypass','ModuleOpenCircuit')</i>
+      best_image_pair_id : UUID <<FK, NULLABLE>>
+    * observation_count : SMALLINT = 1
+    * <b>iec_coa_class</b> : SMALLINT <<CHECK IN (2, 3)>>
+    * <b>om_priority</b> : VARCHAR(16) <<CHECK LOW,MEDIUM,HIGH>>
+    * confidence : DOUBLE PRECISION
+    * temp_max_c : DOUBLE PRECISION
+    * temp_median_ref_c : DOUBLE PRECISION
+    * temp_delta_measured_c : DOUBLE PRECISION
+    * temp_delta_norm_1000wm2_c : DOUBLE PRECISION
+      spatial_iou : DOUBLE PRECISION
+      centroid_error_cm : DOUBLE PRECISION
+      hungarian_margin : DOUBLE PRECISION
+    * anchoring_mode : VARCHAR(32) = 'BIDIRECTIONAL'
+    * <b>qc_status</b> : VARCHAR(32) = 'AUTO_VERIFIED'
+      reviewer_note : TEXT
+      crop_rgb_url : TEXT
+      crop_thermal_url : TEXT
+    * bbox_thermal_px : JSONB
+      hotspot_geom : GEOMETRY(Polygon, 32649)
+    * updated_at : TIMESTAMPTZ = NOW()
+}
+
+note right of module_inspection_logs
+  <b>Trigger Đồng bộ Ngược An toàn Thời gian:</b>
+  <i>trg_sync_module_health_after_inspection</i>
+  (AFTER INSERT OR UPDATE OR DELETE)
+  -------------------------------------------------------
+  1. Kiểm tra: <b>v_camp_date = MAX(flight_date)</b> của nhà máy.
+     Nếu re-upload đợt bay cũ -> KHÔNG ghi đè <i>solar_modules</i>.
+  2. Lọc bỏ các bản ghi có <i>qc_status = 'QC_REJECTED'</i>.
+  3. Chọn lỗi nghiêm trọng nhất trên tấm pin:
+     <i>ORDER BY iec_coa_class DESC, fault_severity DESC,</i>
+     <i>temp_delta_measured_c DESC LIMIT 1</i>.
+  4. Nếu không còn lỗi (do DELETE / QC_REJECTED):
+     Tự động trả <i>solar_modules</i> về <b>'NORMAL' & CoA 1</b>.
+end note
+
+' Quan hệ khóa ngoại (Crow's Foot Notation)
+solar_plants ||--o{ solar_blocks : "1..N (plant_id)"
+solar_blocks ||--o{ solar_strings : "1..N (block_id)"
+solar_plants ||--o{ solar_modules : "1..N (plant_id)"
+solar_blocks ||--o{ solar_modules : "1..N (block_id)"
+solar_strings ||--o{ solar_modules : "1..N (string_id)"
+
+solar_plants ||--o{ flight_campaigns : "1..N (plant_id)"
+flight_campaigns ||--o{ raw_image_pairs : "1..N (campaign_id)"
+flight_campaigns ||--o{ module_inspection_logs : "1..N (campaign_id)"
+
+solar_modules ||--o{ module_inspection_logs : "1..N (module_id)"
+raw_image_pairs |o--o{ module_inspection_logs : "0..N (best_image_pair_id)\n[Góc nhìn Nadir nhất]"
+
+@enduml

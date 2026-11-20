@@ -1,0 +1,71 @@
+@startuml SolarGIS_Activity_Flow
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam DefaultFontName "Segoe UI"
+skinparam DefaultFontSize 11
+skinparam ConditionEndStyle hline
+
+title <b>SƠ ĐỒ HOẠT ĐỘNG (ACTIVITY DIAGRAM) — LUỒNG XỬ LÝ TOÀN TRÌNH TỪ CHIẾN DỊCH BAY ĐẾN ĐỒNG BỘ BẢN ĐỒ SỐ 60 FPS</b>\n(Tích hợp Kiểm tra Môi trường IEC TS 62446-3, AI Đa luồng, Hungarian Hai Ngưỡng & Trigger An toàn Thời gian)
+
+|Kỹ sư UAV / O&M (Frontend WebGL)|
+start
+:Khởi tạo Chiến dịch Bay mới &\nNhập 4 tham số môi trường IEC TS 62446-3\n(<i>G_POA, Độ ẩm, Nhiệt độ phản xạ, e = 0.85</i>);
+
+|Backend Rust (Axum + Tokio)|
+if (Kiểm tra Bức xạ G_POA >= 600 W/m²?) then (Đạt chuẩn IEC)
+  :Lưu bản ghi vào bảng <b>flight_campaigns</b>;
+else (Dưới ngưỡng < 600 W/m²)
+  :Gắn cảnh báo <i>"Bức xạ dưới chuẩn IEC 62446-3"</i>\nlên giao diện & cho phép lưu kèm cờ cảnh báo;
+endif
+
+|Kỹ sư UAV / O&M (Frontend WebGL)|
+:Tải lên lô cặp ảnh đồng bộ <b>_W.JPG</b> (RGB) & <b>_T.JPG</b> (R-JPEG);
+
+|Backend Rust (Axum + Tokio)|
+:Đọc bất đồng bộ EXIF / XMP bằng Tokio:\n- Kiểm tra <i>DewarpFlag</i> & <i>DewarpData</i>\n- Tọa độ RTK, độ cao AGL, góc Gimbal\n- Gom nhóm theo dải bay (<i>strip_id, strip_sequence_idx</i>);
+:Ghi vào bảng <b>raw_image_pairs</b> &\nĐẩy Job dải bay vào Redis <i>queue:solargis:strip_inspection_jobs</i>;
+
+|Python AI Worker (Module 2 + spatial_grid_index)|
+:Nhận Job dải bay từ Redis Queue;
+fork
+  :<b>Nhánh Ảnh lẻ RGB (AI 2A):</b>\n- Nếu <i>DewarpFlag == 0</i>: Khử méo <i>cv2.undistortPoints(..., P=K)</i>\n- Suy luận mô hình <b>AI 2A</b> bắt đa giác tấm pin;
+fork again
+  :<b>Nhánh Ảnh Nhiệt 16-bit (AI 2B):</b>\n- Giải mã <i>DJI Thermal SDK (dirp)</i> đủ 4 tham số\n  (<i>e=0.85, d=min(agl, 25.0), humidity, reflection</i>)\n- Suy luận <b>AI 2B</b> bắt 4 lớp lỗi nhiệt & tính ΔT_measured, ΔT_norm\n- Phân hạng bất thường <b>CoA 2 / CoA 3</b> & độ ưu tiên O&M;
+end fork
+
+:Ghép cặp nội tại RGB - Nhiệt theo tầng độ cao (<i>31m / 35m / 42m</i>);
+:<b>Định vị Không gian 3 Bước (Chống trượt cột & chống trôi tỷ lệ):</b>\n1. Neo cứng 2 đầu dải bay qua <i>get_block_string_boundary_landmarks</i>\n2. Nội suy song phương 2 đầu với biến đổi <i>4-DoF / 6-DoF</i> liên khung + kẹp RTK (±10 cm)\n3. Giải <i>8-DoF DLT Homography (Hartley)</i> + Làm mịn lò xo <i>mass_spring_refine</i>;
+:Truy vấn ứng viên <i>get_candidates_in_radius(r = 0.524m)</i> &\nGiải bài toán phân công tối ưu <b>Hungarian (Kuhn-Munkres)</b>;
+
+if (IoU >= 0.50 VÀ Δd < 52.4cm VÀ Decision Margin >= 0.15?) then (Đạt ngưỡng tin cậy cao)
+  :Gán <b>qc_status = 'AUTO_VERIFIED'</b>;
+else (Ca vùng biên / Nhập nhằng)
+  :Gán <b>qc_status = 'PENDING_QC'</b>;
+endif
+
+:<b>Khử trùng lặp Đa góc nhìn (Multi-View Deduplication):</b>\n- Gom cụm theo <i>UNIQUE(campaign_id, module_id, fault_class)</i>\n- Chọn bức ảnh gần tâm quang học nhất (<b>Nadir nhất</b>: <i>MIN(dist_to_image_center_px)</i>)\n- Giữ nhiệt độ cực đại <i>MAX(temp_delta_measured_c)</i>;
+
+|CSDL Không gian PostGIS 16-3.4|
+:UPSERT vào bảng <b>module_inspection_logs</b>\n& Tự động kích hoạt Trigger <i>trg_sync_module_health_after_inspection</i>;
+
+if (Đợt bay có flight_date == MAX(flight_date) của nhà máy?) then (Đúng là đợt bay mới nhất)
+  :Lọc các bản ghi <i>qc_status != 'QC_REJECTED'</i>\nChọn lỗi nghiêm trọng nhất (<i>ORDER BY iec_coa_class DESC, severity DESC</i>)\nCập nhật <b>solar_modules.current_coa_class</b> & <b>current_health_status</b>;
+else (Đợt bay lịch sử cũ)
+  :<b>KHÔNG ghi đè</b> bảng <i>solar_modules</i>\n(Bảo vệ trạng thái hiện tại của nhà máy);
+endif
+
+|Backend Rust (Axum + Tokio)|
+:Nhận sự kiện từ Redis <i>pubsub:solargis:campaign_events</i>\n& Phát luồng <b>SSE</b> kèm khóa nguyên <i>mvt_id</i> về trình duyệt;
+
+|Kỹ sư UAV / O&M (Frontend WebGL)|
+:Gọi <i>map.setFeatureState({ id: mvt_id }, { coa_class })</i>\nĐổi màu tấm pin trên bản đồ 60 FPS tức thì (< 100 ms);
+
+if (Kỹ sư thực hiện Hậu kiểm QC hoặc Xem Lịch sử?) then (Duyệt QC / Xuất PDF)
+  :Gọi <i>PATCH /api/inspections/{id}/qc</i> hoặc\n<i>POST /api/campaigns/{id}/report.pdf</i> (Typst trong <i>spawn_blocking</i>);
+else (Đổi xem Đợt bay Lịch sử)
+  :1. Gọi <i>map.removeFeatureState(...)</i> xóa bóng ma trạng thái\n2. Nạp JSON lỗi (~20 KB) qua <i>setFeatureState</i>\n3. Đổi fallback màu sang <i>["coalesce", ["feature-state", "coa_class"], 1]</i>;
+endif
+
+stop
+@enduml

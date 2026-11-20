@@ -1,0 +1,31 @@
+# =============================================================================
+# SolarGIS Digital Twin - Dockerfile.worker
+# Build Python AI Worker (--platform=linux/amd64 + DJI Thermal SDK dirp)
+# Tham chiếu: DATA_CONTRACT.md (Mục 7.1 - Bản vá kỹ thuật #4)
+# =============================================================================
+
+FROM --platform=linux/amd64 python:3.11-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libgl1 \
+    libglib2.0-0 \
+    libgeos-dev \
+    libproj-dev \
+    gdal-bin \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy DJI Thermal SDK shared libraries (x86_64) & libv_list.ini
+RUN mkdir -p /opt/dji_tsdk
+COPY infra/dji_tsdk/ /opt/dji_tsdk/
+ENV LD_LIBRARY_PATH="/opt/dji_tsdk:${LD_LIBRARY_PATH}"
+
+WORKDIR /app
+
+COPY packages/spatial_grid_index /app/packages/spatial_grid_index
+COPY modules/module2_uav_thermal_ai /app/modules/module2_uav_thermal_ai
+
+RUN pip install --no-cache-dir -e /app/packages/spatial_grid_index \
+    && pip install --no-cache-dir -e /app/modules/module2_uav_thermal_ai
+
+CMD ["python", "-m", "modules.module2_uav_thermal_ai.worker.redis_consumer"]
