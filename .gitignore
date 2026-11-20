@@ -1,4 +1,4 @@
-data/gpkg/# Bỏ qua toàn bộ dữ liệu nặng, chỉ giữ lại .gitkeep và README.md
+# Bỏ qua toàn bộ dữ liệu nặng, chỉ giữ lại .gitkeep và README.md
 data/gpkg/*.gpkg
 data/raw/*
 !data/raw/.gitkeep
